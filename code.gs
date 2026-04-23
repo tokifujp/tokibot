@@ -319,6 +319,32 @@ function showFilteredList(period) {
   postMessage(msg);
 }
 
+function autoClean() {
+  const items = getItems();
+  const oneWeekAgo = new Date(Date.now() - 7 * 24 * 3600 * 1000);
+  
+  const targets = items.filter(i => {
+    if (getStatus(i) !== 'done') return false;
+    const updated = new Date(parseInt(i.updated_timestamp) * 1000);
+    return updated < oneWeekAgo;
+  });
+
+  if (targets.length === 0) {
+    postMessage('🧹 削除対象のタスクはありませんでした');
+    return;
+  }
+
+  targets.forEach(item => {
+    UrlFetchApp.fetch('https://slack.com/api/slackLists.items.delete', {
+      method: 'post',
+      headers: { 'Authorization': `Bearer ${SLACK_TOKEN}`, 'Content-Type': 'application/json; charset=utf-8' },
+      payload: JSON.stringify({ list_id: LIST_ID, id: item.id })
+    });
+  });
+
+  postMessage(`🧹 ${targets.length}件の完了タスク（1週間以上前）を削除しました`);
+}
+
 function getItemUrl(itemId) {
   return `https://${WORKSPACE_DOMAIN}.slack.com/lists/${LIST_ID}?record_id=${itemId}`;
 }
