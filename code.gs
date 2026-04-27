@@ -6,28 +6,35 @@ const CHANNEL_ID = props.getProperty('CHANNEL_ID');
 const USER_ID = props.getProperty('USER_ID');
 
 function doPost(e) {
-  const payload = JSON.parse(e.postData.contents);
-  
-  // Slack URL verification
-  if (payload.type === 'url_verification') {
-    return ContentService.createTextOutput(payload.challenge);
+  try {
+    const payload = JSON.parse(e.postData.contents);
+
+    if (payload.type === 'url_verification') {
+      return ContentService.createTextOutput(payload.challenge);
+    }
+
+    const eventId = payload.event_id;
+    const cache = CacheService.getScriptCache();
+    if (cache.get(eventId)) return ContentService.createTextOutput('ok');
+    cache.put(eventId, '1', 60);
+
+    const event = payload.event;
+    if (!event || event.type !== 'message' || event.subtype) {
+      return ContentService.createTextOutput('ok');
+    }
+    if (event.user !== USER_ID) return ContentService.createTextOutput('ok');
+
+    const text = event.text?.trim();
+    const userId = event.user;
+
+    // 非同期的に処理（Slackへの200応答を先に返すため）
+    handleCommand(text, userId);
+
+  } catch (err) {
+    console.log('doPost error: ' + err.message + '\n' + err.stack);
+    // Slackには必ず200を返す（リトライさせない）
   }
 
-  // 重複実行防止
-  const eventId = payload.event_id;
-  const cache = CacheService.getScriptCache();
-  if (cache.get(eventId)) return ContentService.createTextOutput('ok');
-  cache.put(eventId, '1', 60);
-  
-  const event = payload.event;
-  if (!event || event.type !== 'message' || event.subtype) return;
-  if (event.user !== USER_ID) return;
-  
-  const text = event.text?.trim();
-  const userId = event.user;
-  
-  handleCommand(text, userId);
-  
   return ContentService.createTextOutput('ok');
 }
 
@@ -48,7 +55,10 @@ function getListSchema() {
   });
   const listData = JSON.parse(listRes.getContentText());
   const recordId = listData.items?.[0]?.id;
-  if (!recordId) throw new Error('リストにアイテムがありません');
+  if (!recordId) {
+    if (!recordId) throw new Error('リストにアイテムがありません');
+    return null;
+  }
   
   // スキーマ取得
   const res = UrlFetchApp.fetch('https://slack.com/api/slackLists.items.info', {
@@ -57,9 +67,7 @@ function getListSchema() {
     payload: JSON.stringify({ list_id: LIST_ID, id: recordId })
   });
   const data = JSON.parse(res.getContentText());
-  Logger.log(JSON.stringify(data));
   const schema = data.list?.list_metadata?.schema;
-  Logger.log(JSON.stringify(schema));
 
   const nameCol = schema.find(c => c.key === 'name')?.id;
   const statusCol = schema.find(c => c.type === 'select')?.id;
@@ -164,7 +172,6 @@ function addTask(name) {
       ]
     })
   });
-  // Logger.log(res.getContentText());
   const data = JSON.parse(res.getContentText());
   const itemId = data.item?.id;
   postMessage(`✅ 追加しました: *<${getItemUrl(itemId)}|${name}>* (todo)`);
