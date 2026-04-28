@@ -39,7 +39,9 @@ function doPost(e) {
 }
 
 function clearCache() {
-  CacheService.getScriptCache().remove('list_schema');
+  const cache = CacheService.getScriptCache();
+  cache.remove('list_schema');
+  cache.remove('eod_' + new Date().toDateString());
 }
 
 function getListSchema() {
@@ -126,6 +128,9 @@ function handleCommand(text, userId) {
     showFilteredList(lsMatch[1].trim());
     return;
   }
+
+  // cacheクリア
+  if (text === 'reset') { clearCache(); postMessage('🔄 キャッシュをクリアしました'); return; }
 }
 
 function getItems() {
@@ -262,6 +267,7 @@ function showHelp() {
 \`end <番号|タスク名>\` — 完了に変更
 \`wait <番号|タスク名>\` — 保留に変更
 \`rm <番号|タスク名>\` — タスクを削除
+\`reset\` — Cacheを削除
 \`:q\` | \`:wq\` | \`exit\` | \`quit\` — 本日の終業報告を投稿`;
   postMessage(msg);
 }
